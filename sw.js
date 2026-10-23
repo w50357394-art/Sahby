@@ -1,4 +1,4 @@
-/* Sahby Chat - Service Worker: يخلي التطبيق يفتح بدون إنترنت */
+/* Sahby Chat - Service Worker: يخلي التطبيق يفتح بدون إنترنت ويدعم الإشعارات */
 const VER = 'sahby-v1';
 const SHELL = ['./', './index.html'];
 
@@ -12,6 +12,42 @@ self.addEventListener('activate', e => {
       .then(keys => Promise.all(keys.filter(k => k !== VER).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// استقبال الإشعارات في الخلفية
+self.addEventListener('push', function(event) {
+    let data = { title: 'رسالة جديدة', body: 'وصلتك رسالة جديدة في تطبيق صحبي' };
+    
+    if (event.data) {
+        try {
+            data = event.data.json();
+        } catch (e) {
+            data.body = event.data.text();
+        }
+    }
+
+    const options = {
+        body: data.body,
+        icon: './index.html',
+        badge: './index.html',
+        vibrate: [100, 50, 100],
+        data: {
+            dateOfArrival: Date.now(),
+            primaryKey: '2'
+        }
+    };
+
+    event.waitUntil(
+        self.registration.showNotification(data.title, options)
+    );
+});
+
+// عند الضغط على الإشعار يتم فتح التطبيق
+self.addEventListener('notificationclick', function(event) {
+    event.notification.close();
+    event.waitUntil(
+        clients.openWindow('/')
+    );
 });
 
 self.addEventListener('fetch', e => {
