@@ -241,6 +241,7 @@ setTimeout(function(){try{var sp=document.getElementById('splash');if(sp&&getCom
   <div class="replybar hidden" id="replyBar"><div class="rb"><b id="rbName"></b><span id="rbText"></span></div><button class="ibtn" id="rbClose" aria-label="إلغاء الرد"></button></div>
   <div class="blockedbar hidden" id="blockedBar"><div class="bb-t"><b id="blockedTxt"></b><small id="blockedSub"></small></div><button class="btn" id="unblockBtn" onclick="askUnblock(currentFriend.id)"></button></div>
   <form class="composer" id="messageForm" autocomplete="off">
+   <button type="button" class="tool" id="emojiBtn" aria-label="إيموجي"></button>
    <button type="button" class="tool" id="attachBtn" aria-label="إرفاق"></button>
    <div class="rechint"><span class="arr">‹</span><span id="recHintT"></span></div>
    <input type="text" id="messageInput" maxlength="4000" autocomplete="off" placeholder="اكتب رسالة...">
@@ -688,7 +689,7 @@ async function init(){
   const {data,error}=await withTimeout(db.auth.getSession(),12000,'الخادم لم يرد على طلب تسجيل الدخول.');
   if(error)throw error;
   if(data.session)me=data.session.user;
-  else{const r=await withTimeout(db.auth.signInAnonymously(),12000,'تسجيل الدخول استغرق وقتًا طويلًا.');if(r.error)throw r.error;me=r.data.user}
+  else me=await authGate();
   if(!me)throw Error('لم يتم إنشاء جلسة. فعّل Anonymous Sign-Ins في Supabase.');
   loadLocal();
   await withTimeout(ensureProfile(),15000,'تعذّر تحميل ملفك الشخصي.');
@@ -721,7 +722,7 @@ async function ensureProfile(){
  if(error)throw Error('مشكلة في جدول profiles: '+error.message);
  if(!data){
   for(let i=0;i<6&&!data;i++){
-   const uname='sahby_'+String(Math.floor(Math.random()*1e8)).padStart(8,'0');
+   const uname=(i===0&&window.__pendUname)||'sahby_'+String(Math.floor(Math.random()*1e8)).padStart(8,'0');
    const r=await db.from('profiles').insert({id:me.id,username:uname,display_name:'صاحب جديد'}).select().single();
    if(!r.error){data=r.data;break}
    if(!/duplicate|unique/i.test(r.error.message))throw Error('تعذّر إنشاء الملف الشخصي: '+r.error.message);
@@ -853,8 +854,10 @@ function storyStrip(){
  };
  return `<div class="stories">${ring(myProfile||{},mine,true)}${others.map(p=>ring(p,storiesBy[p.id],false)).join('')}</div>`;
 }
+const rav=p=>{const l=(!p.isGroup&&!blockedIds.has(p.id))?(storiesBy[p.id]||[]):[];if(!l.length)return av(p);const un=l.some(x=>!seenSt.has(x.id));return `<span class="sring ${un?'new':'old'}" onclick="event.stopPropagation();openStories('${p.id}')">${av(p)}</span>`};
+const vbadge=p=>p&&p.verified?'<svg class="vb" viewBox="0 0 24 24" aria-label="verified"><circle cx="12" cy="12" r="11" fill="#1d9bf0"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>':'';
 const chatItem=p=>{const bl=!p.isGroup&&blockedIds.has(p.id),u=meta[p.id]?.unread||0,pin=pins.has(p.id),m=meta[p.id]?.last,tm=m?shortTime(m.created_at):'';
- return `<div class="swrap" data-id="${esc(p.id)}"><button class="swdel" onclick="askClearChat('${p.id}')" aria-label="${esc(t('delChat'))}">${IC.trash}<span>${esc(t('delChat'))}</span></button><div class="item ${currentFriend?.id===p.id?'active':''} ${bl?'blocked':''} ${pin?'pinned':''}" onclick="openChat('${p.id}')"><span class="avw">${av(p)}${isOnline(p)?'<i class="odot"></i>':''}${p.isGroup?`<i class="gbadge">${IC.users}</i>`:''}</span><div class="iteminfo"><b>${esc(profileName(p))}</b><small class="${drafts[p.id]?'dr':''}">${esc(preview(p))}</small></div><div class="iside">${tm?`<em class="tm">${esc(tm)}</em>`:''}${bl?`<span class="tag">${esc(t('blockedTag'))}</span>`:u?`<span class="badge">${u}</span>`:''}${pin?`<span class="pinic">${IC.pin}</span>`:''}</div></div></div>`};
+ return `<div class="swrap" data-id="${esc(p.id)}"><button class="swdel" onclick="askClearChat('${p.id}')" aria-label="${esc(t('delChat'))}">${IC.trash}<span>${esc(t('delChat'))}</span></button><div class="item ${currentFriend?.id===p.id?'active':''} ${bl?'blocked':''} ${pin?'pinned':''}" onclick="openChat('${p.id}')"><span class="avw">${rav(p)}${isOnline(p)?'<i class="odot"></i>':''}${p.isGroup?`<i class="gbadge">${IC.users}</i>`:''}</span><div class="iteminfo"><b>${esc(profileName(p))}${vbadge(p)}</b><small class="${drafts[p.id]?'dr':''}">${esc(preview(p))}</small></div><div class="iside">${tm?`<em class="tm">${esc(tm)}</em>`:''}${bl?`<span class="tag">${esc(t('blockedTag'))}</span>`:u?`<span class="badge">${u}</span>`:''}${pin?`<span class="pinic">${IC.pin}</span>`:''}</div></div></div>`};
 const friendItem=p=>{const bl=blockedIds.has(p.id);return `<div class="item ${bl?'blocked':''}" onclick="${bl?`askUnblock('${p.id}')`:`showChatById('${p.id}')`}">${av(p)}<div class="iteminfo"><b>${esc(profileName(p))}</b><small>@${esc(p.username||'')}</small></div>${bl?`<span class="tag">${esc(t('blockedTag'))}</span><button class="btn small" onclick="event.stopPropagation();askUnblock('${p.id}')">${esc(t('unblockB'))}</button>`:`<button class="btn secondary small" onclick="event.stopPropagation();removeFriend('${p.id}')">${esc(t('remove'))}</button>`}</div>`};
 function renderList(){
  if(sub==='edit')return;
@@ -2176,10 +2179,10 @@ applyTheme(getPref());
 (mq.addEventListener?mq.addEventListener.bind(mq,'change'):mq.addListener.bind(mq))(()=>{if(getPref()==='auto')applyTheme('auto',true)});
 window.setThemePref=p=>{try{localStorage.setItem(TK,p)}catch(e){}applyTheme(p,true);renderList()};
 /* ---- صوت الرسائل ---- */
-const SK='sahby_snd',sndOn=()=>{try{return localStorage.getItem(SK)!=='0'}catch(e){return true}};
+const sndOn=()=>true;
 let sac=null,lastSnd=0,lastUn=null;
 function actx(){const A=window.AudioContext||window.webkitAudioContext;if(!A)return null;if(!sac)sac=new A();if(sac.state==='suspended')sac.resume().catch(()=>{});return sac}
-document.addEventListener('pointerdown',()=>actx(),{once:true});
+['pointerdown','touchend','keydown'].forEach(ev=>document.addEventListener(ev,()=>actx(),{passive:true}));
 window.playDing=function(){const c=actx();if(!c)return;const t=c.currentTime;
  [[784,0],[1175,.12],[1568,.24]].forEach(([f,d],i)=>{const o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.value=f;
   g.gain.setValueAtTime(.0001,t+d);g.gain.exponentialRampToValueAtTime(.16-i*.03,t+d+.02);g.gain.exponentialRampToValueAtTime(.0001,t+d+.3);
@@ -2194,9 +2197,8 @@ refreshAll=async function(){const r=await _ra.apply(this,arguments);
   lastUn=tot}catch(e){}return r};
 /* ---- أقسام الإعدادات ---- */
 function injectSettings(){const pf=document.querySelector('#list .pf');if(!pf||pf.querySelector('#v6set'))return;
- const p=getPref(),on=sndOn(),sg=(v,a,e)=>`<button class="v6seg ${p===v?'on':''}" onclick="setThemePref('${v}')">${T(a,e)}</button>`;
- pf.insertAdjacentHTML('afterbegin',`<div id="v6set"><div class="sect">${T('المظهر','Appearance')}</div><div class="card"><div class="v6segs">${sg('dark','ليلي','Dark')}${sg('light','نهاري','Light')}${sg('auto','تلقائي','Auto')}</div></div>
-<div class="sect">${T('الإشعارات','Notifications')}</div><div class="card"><div class="v6row"><b>${T('صوت الرسائل الجديدة','New message sound')}</b><button class="btn secondary small" onclick="playDing()">${T('معاينة','Preview')}</button><button class="v6tg ${on?'on':''}" onclick="toggleSnd()" aria-label="sound"></button></div></div></div>`)}
+ const p=getPref(),sg=(v,a,e)=>`<button class="v6seg ${p===v?'on':''}" onclick="setThemePref('${v}')">${T(a,e)}</button>`;
+ pf.insertAdjacentHTML('afterbegin',`<div id="v6set"><div class="sect">${T('المظهر','Appearance')}</div><div class="card"><div class="v6segs">${sg('dark','ليلي','Dark')}${sg('light','نهاري','Light')}${sg('auto','تلقائي','Auto')}</div></div></div>`)}
 const _rl=renderList;renderList=function(){_rl.apply(this,arguments);if((sub||view)==='settings')injectSettings()};
 /* ---- شريط التنقل ---- */
 function navInd(){const n=$('nav');if(!n)return;let i=n.querySelector('.navind');if(!i){i=document.createElement('i');i.className='navind';n.prepend(i)}
@@ -2564,5 +2566,578 @@ const _ce=closeEditorSilent;closeEditorSilent=function(){close();return _ce.appl
 window.edSetFx=i=>{ed.filter=FX[i][0];const m=$('edMedia');if(m)m.style.filter=ed.filter||'';renderPanel()};
 })();
 </script>
+
+<!-- ===== Sahby v10: إيموجي تحت الشريط + Twemoji + أنيميشن + فويس تليجرام ===== -->
+<script src="https://cdn.jsdelivr.net/npm/@twemoji/api@15.1.0/dist/twemoji.min.js" crossorigin="anonymous"></script>
+<style id="v10css">
+/* ---- Voice (Telegram-style) ---- */
+.composer.recing{position:relative;padding:10px 12px;gap:0}
+.composer.recing #messageInput,
+.composer.recing #attachBtn,
+.composer.recing #emojiBtn,
+.composer.recing #sendBtn,
+.composer.recing .rechint,
+.composer.recing #cancelRec{display:none!important}
+.vrec{display:none;flex:1;align-items:center;gap:10px;min-width:0;padding:0 4px;direction:ltr}
+.composer.recing .vrec{display:flex}
+.vrec-bar{flex:1;display:flex;align-items:center;gap:10px;min-width:0;height:48px;padding:0 16px;border-radius:24px;background:#1a2332;border:1px solid #2a3a4a;transition:transform .15s,opacity .15s,background .2s}
+.vrec-bar.pull{background:#3a1f28;border-color:#6b2f3a}
+.vrec-dot{width:10px;height:10px;border-radius:50%;background:#ff3b4a;box-shadow:0 0 0 0 #ff3b4a88;animation:rpulse 1.1s infinite;flex-shrink:0}
+.vrec-time{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px;color:#e8eef2;min-width:48px;direction:ltr}
+.vrec-hint{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;color:#8b9aab;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;min-width:0}
+.vrec-hint .chev{font-size:16px;opacity:.85;animation:nudgeL 1.1s ease-in-out infinite}
+html[dir=rtl] .vrec-hint .chev{animation:nudgeR 1.1s ease-in-out infinite}
+@keyframes nudgeL{50%{transform:translateX(-5px)}}
+@keyframes nudgeR{50%{transform:translateX(5px)}}
+.vrec-lock-zone{position:absolute;right:14px;bottom:70px;width:48px;height:48px;border-radius:50%;background:#1a2332;border:1px solid #2a3a4a;display:none;place-items:center;color:#8b9aab;z-index:8;transition:transform .2s,background .2s,color .2s,opacity .2s;opacity:0;pointer-events:none}
+.composer.recing .vrec-lock-zone{display:grid}
+.vrec-lock-zone.show{opacity:1}
+.vrec-lock-zone.hot{background:#2a4a3a;color:#5be3b5;border-color:#3a6a55;transform:scale(1.08)}
+.vrec-lock-zone .ic{width:22px;height:22px}
+#micBtn.vrec-mic{width:56px;height:56px;border-radius:50%;background:linear-gradient(145deg,#4da3ff,#1a73e8);box-shadow:0 4px 18px #1a73e866;color:#fff;transition:transform .15s,box-shadow .2s}
+#micBtn.vrec-mic .ic{width:26px;height:26px}
+#micBtn.vrec-mic.rec{background:linear-gradient(145deg,#4da3ff,#1a73e8);animation:none;box-shadow:0 0 0 8px #1a73e833,0 6px 22px #1a73e888;transform:scale(1.06)}
+#micBtn.vrec-mic.lock{background:linear-gradient(145deg,#34c759,#1fa855);box-shadow:0 4px 18px #1fa85566;animation:none}
+#micBtn.vrec-mic.lock .ic{transform:none}
+.vrec-locked{display:none;flex:1;align-items:center;gap:10px;padding:0 4px}
+.composer.recing.locked .vrec{display:none}
+.composer.recing.locked .vrec-locked{display:flex}
+.composer.recing.locked .vrec-lock-zone{display:none}
+.vrec-send-btn{width:48px;height:48px;border-radius:50%;background:linear-gradient(145deg,#34c759,#1fa855);color:#fff;display:grid;place-items:center;flex-shrink:0;border:0}
+.vrec-send-btn .ic{width:22px;height:22px}
+.vrec-trash-btn{width:44px;height:44px;border-radius:50%;background:#2a1d23;color:#ff8d98;display:grid;place-items:center;flex-shrink:0;border:0}
+.vrec-trash-btn .ic{width:20px;height:20px}
+.rectop.show{display:none!important}
+
+/* ---- Emoji panel: docked UNDER composer (Telegram style) ---- */
+#chatPanel{display:flex;flex-direction:column;min-height:0}
+#chatPanel.ep-open .messages{flex:1;min-height:0}
+#emojiPanel{
+  display:none;flex-direction:column;flex-shrink:0;
+  width:100%;max-height:min(42dvh,340px);height:min(42dvh,340px);
+  background:#14232c;border-top:1px solid var(--line);
+  z-index:6;overflow:hidden;
+}
+#chatPanel.ep-open #emojiPanel{display:flex}
+.ep-grab{display:none}
+.ep-tabs{display:flex;gap:2px;padding:6px 8px 4px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;background:#101c24;border-bottom:1px solid #1e303a}
+.ep-tabs::-webkit-scrollbar{display:none}
+.ep-tab{flex:0 0 auto;width:38px;height:34px;border-radius:10px;background:transparent;font-size:18px;display:grid;place-items:center;opacity:.5;border:0;color:inherit;padding:0}
+.ep-tab.on{background:#1f4a4566;opacity:1}
+.ep-tab img.emoji{width:22px;height:22px}
+.ep-grid{flex:1;overflow:auto;padding:6px 8px 10px;display:grid;grid-template-columns:repeat(8,1fr);gap:2px;align-content:start;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.ep-grid button{
+  aspect-ratio:1;border:0;background:transparent;font-size:26px;border-radius:12px;
+  display:grid;place-items:center;padding:2px;line-height:1;cursor:pointer;
+  transition:transform .12s cubic-bezier(.2,1.4,.4,1),background .12s;
+}
+.ep-grid button:active,
+.ep-grid button.pop{animation:emoPop .32s cubic-bezier(.2,1.5,.4,1)}
+@keyframes emoPop{
+  0%{transform:scale(1)}
+  35%{transform:scale(1.35)}
+  60%{transform:scale(.92)}
+  100%{transform:scale(1)}
+}
+.ep-grid button img.emoji{width:28px;height:28px;pointer-events:none;display:block}
+.ep-grid button:active{background:#ffffff12}
+#emojiBtn.on{color:#7fe5cb;background:#1f4a4533}
+img.emoji{width:1.25em;height:1.25em;vertical-align:-.2em;display:inline-block}
+.bubble img.emoji{width:1.35em;height:1.35em}
+.rx img.emoji{width:1.1em;height:1.1em}
+
+html[data-theme=light] #emojiPanel{background:#f7f3ff;border-color:#ddd3f3}
+html[data-theme=light] .ep-tabs{background:#efe9fb;border-color:#e0d6f5}
+html[data-theme=light] .vrec-bar{background:#efe9fb;border-color:#ddd3f3}
+html[data-theme=light] .vrec-time{color:#1d1433}
+html[data-theme=light] .vrec-hint{color:#6b5f8a}
+html[data-theme=light] .composer.recing{background:#fff}
+</style>
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const T=(a,e)=>(typeof lang!=='undefined'&&lang==='ar')?a:e;
+
+/* ---- Twemoji helpers ---- */
+function twParse(root){
+  if(typeof twemoji==='undefined'||!root)return;
+  try{
+    twemoji.parse(root,{
+      folder:'svg',ext:'.svg',
+      base:'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/',
+      className:'emoji'
+    });
+  }catch(e){}
+}
+function twStr(s){
+  if(typeof twemoji==='undefined')return s;
+  try{
+    return twemoji.parse(String(s),{
+      folder:'svg',ext:'.svg',
+      base:'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/',
+      className:'emoji'
+    });
+  }catch(e){return s}
+}
+
+/* Observe chat bubbles for new messages */
+const mo=new MutationObserver(ms=>{
+  ms.forEach(m=>m.addedNodes.forEach(n=>{
+    if(n.nodeType===1&&!/^(SCRIPT|STYLE)$/.test(n.tagName))twParse(n);
+  }));
+});
+const bootMo=()=>{
+  mo.observe(document.body,{childList:true,subtree:true});
+  twParse(document.body);
+};
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bootMo);else setTimeout(bootMo,800);
+
+/* ========== Emoji picker (docked under composer) ========== */
+const EP_CATS=[
+ {id:'smile',icon:'😀',list:'😀 😃 😄 😁 😆 😅 🤣 😂 🙂 😊 😇 🥰 😍 🤩 😘 😗 ☺️ 😚 😙 🥲 😋 😛 😜 🤪 😝 🤑 🤗 🤭 🤫 🤔 🤐 🤨 😐 😑 😶 😏 😒 🙄 😬 😮‍💨 🤥 😌 😔 😪 🤤 😴 😷 🤒 🤕 🤢 🤮 🥵 🥶 🥴 😵 🤯 🤠 🥳 🥸 😎 🤓 🧐 😕 😟 🙁 ☹️ 😮 😯 😲 😳 🥺 😦 😧 😨 😰 😥 😢 😭 😱 😖 😣 😞 😓 😩 😫 🥱 😤 😡 😠 🤬 😈 👿 💀 ☠️ 💩 🤡 👹 👺 👻 👽 👾 🤖'.split(' ')},
+ {id:'hands',icon:'👍',list:'👍 👎 👊 ✊ 🤛 🤜 👏 🙌 👐 🤲 🤝 🙏 ✍️ 💅 🤳 💪 🦾 🦵 🦶 👂 👃 🧠 👀 👁️ 👅 👄 💋 💘 💝 💖 💗 💓 💞 💕 💟 ❣️ 💔 ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💯 💢 💥 💫 💦 💨 🕳️ 💣 💬 💭 💤'.split(' ')},
+ {id:'people',icon:'👤',list:'👋 🤚 🖐️ ✋ 🖖 👌 🤌 🤏 ✌️ 🤞 🤟 🤘 🤙 👈 👉 👆 🖕 👇 ☝️ 🫵 👶 👧 🧒 👦 👩 🧑 👨 👵 🧓 👴 👮 👷 💂 🕵️ 👩‍⚕️ 👨‍⚕️ 👩‍🍳 👨‍🍳 👩‍🎓 👨‍🎓 👩‍💻 👨‍💻 👩‍🎨 👨‍🎨 👮‍♀️ 👮‍♂️ 👰 🤵 👸 🤴 🦸 🦹 🎅 🤶 🧙 🧝 🧛 🧞 🧜 🧚 👼 🤰 🙇 💁 🙅 🙆 🙋 🤦 🤷'.split(' ')},
+ {id:'nature',icon:'🌿',list:'🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🙈 🙉 🙊 🐒 🐔 🐧 🐦 🐤 🦆 🦅 🦉 🦇 🐺 🐗 🐴 🦄 🐝 🐛 🦋 🐌 🐞 🐜 🦟 🦗 🕷️ 🦂 🐢 🐍 🦎 🦖 🦕 🐙 🦑 🦐 🦞 🦀 🐡 🐠 🐟 🐬 🐳 🐋 🦈 🐊 🐅 🐆 🦓 🦍 🐘 🦏 🐪 🦒 🐄 🐕 🐈 🪶 🐓 🦃 🦚 🦜 🦢 🦩 🐇 🦝 🦨 🦔 🐉 🐲 🌵 🎄 🌲 🌳 🌴 🌱 🌿 ☘️ 🍀 🍃 🍂 🍁 🍄 🐚 🌾 💐 🌷 🌹 🥀 🌺 🌸 🌼 🌻 🌞 🌝 🌛 🌜 🌚 🌕 🌙 🌎 🌍 🌏 ⭐ 🌟 ✨ ⚡ 🔥 🌈 ☀️ ⛅ 🌧️ ⛈️ ❄️ ☃️ ⛄ 💨 💧 💦 ☔ 🌊'.split(' ')},
+ {id:'food',icon:'🍕',list:'🍎 🍐 🍊 🍋 🍌 🍉 🍇 🍓 🫐 🍈 🍒 🍑 🥭 🍍 🥥 🥝 🍅 🍆 🥑 🥦 🥬 🥒 🌶️ 🌽 🥕 🧄 🧅 🥔 🍠 🥐 🥯 🍞 🥖 🥨 🧀 🥚 🍳 🥞 🧇 🥓 🥩 🍗 🍖 🌭 🍔 🍟 🍕 🥪 🥙 🌮 🌯 🥗 🍝 🍜 🍲 🍛 🍣 🍱 🥟 🍤 🍙 🍚 🍘 🍥 🍧 🍨 🍦 🥧 🧁 🍰 🎂 🍮 🍭 🍬 🍫 🍿 🍩 🍪 🥜 🍯 🥛 ☕ 🍵 🍶 🍺 🍻 🥂 🍷 🥃 🍸 🍹 🍾 🧊 🥄 🍴 🍽️'.split(' ')},
+ {id:'travel',icon:'✈️',list:'⚽ 🏀 🏈 ⚾ 🎾 🏐 🏉 🎱 🏓 🏸 🏒 🥅 ⛳ 🏹 🎣 🥊 🥋 🛹 ⛸️ 🎿 🏂 🏋️ 🤸 🧘 🏄 🏊 🚴 🏆 🥇 🥈 🥉 🏅 🎫 🎤 🎧 🎼 🎹 🥁 🎷 🎺 🎸 🎻 🎲 ♟️ 🎯 🎮 🎰 🧩 🚗 🚕 🚙 🚌 🏎️ 🚓 🚑 🚒 🚚 🚲 🛵 🏍️ ✈️ 🚀 🛸 🚁 ⛵ 🚢 🏠 🏡 🏢 🏥 🏦 🏨 🏫 ⛪ 🕌 🛕 🗽 🗼 🏰 🏯 ⛺ 🌋 ⛰️ 🏕️ 🌅 🌄 🌠 🎇 🎆 🏙️ 🌃 🌌 🌉'.split(' ')},
+ {id:'objects',icon:'💡',list:'⌚ 📱 💻 ⌨️ 🖥️ 🖨️ 🕹️ 📷 📸 📹 🎥 📞 ☎️ 📺 📻 🧭 ⏱️ ⏰ ⌛ 📡 🔋 🔌 💡 🔦 🕯️ 💸 💵 💴 💶 💷 💰 💳 💎 🔧 🔨 🛠️ 🧲 💊 💉 🩺 🧹 🛒 🎁 🎈 🎀 🎉 🎊 ✉️ 📧 📦 📋 📁 📅 📌 📍 ✂️ ✏️ 🔍 🔒 🔓 🔑'.split(' ')},
+ {id:'symbols',icon:'💯',list:'❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 💟 ☮️ ✝️ ☪️ 🕉️ ✡️ 🔯 ☯️ ⚛️ ☢️ ☣️ 💯 💢 💥 💫 💦 💤 ✅ ❌ ⭕ ❗ ❓ ❕ ❔ ‼️ ⁉️ 💲 ✖️ ➕ ➖ ➗ ♻️ 🔖 🔔 🔕 🔇 🔈 🔉 🔊 🎵 🎶 🔴 🟠 🟡 🟢 🔵 🟣 ⚫ ⚪ 🟤 🔶 🔷 🔸 🔹'.split(' ')}
+];
+
+let epOpen=false,epCat=0;
+const chatPanel=$('chatPanel');
+const epEl=document.createElement('div');
+epEl.id='emojiPanel';
+epEl.innerHTML=`<div class="ep-tabs" id="epTabs"></div><div class="ep-grid" id="epGrid"></div>`;
+// Insert AFTER composer so it sits below the input bar
+const form=$('messageForm');
+if(form&&form.parentNode){
+  form.parentNode.insertBefore(epEl, form.nextSibling);
+}else if(chatPanel){
+  chatPanel.appendChild(epEl);
+}else{
+  document.body.appendChild(epEl);
+}
+
+function renderEpTabs(){
+  $('epTabs').innerHTML=EP_CATS.map((c,i)=>`<button type="button" class="ep-tab ${i===epCat?'on':''}" data-i="${i}" aria-label="${c.id}">${c.icon}</button>`).join('')+`<button type="button" class="ep-ctl" id="epKb" aria-label="keyboard">⌨️</button><button type="button" class="ep-ctl" id="epX" aria-label="close">✖️</button>`;
+  twParse($('epTabs'));
+}
+function renderEpGrid(){
+  const list=EP_CATS[epCat].list.filter(Boolean);
+  $('epGrid').innerHTML=list.map(e=>`<button type="button" data-e="${e}" aria-label="${e}">${e}</button>`).join('');
+  twParse($('epGrid'));
+}
+function openEmoji(){
+  if(epOpen){closeEmoji();return}
+  epOpen=true;renderEpTabs();renderEpGrid();
+  chatPanel?.classList.add('ep-open');
+  {const i=$('messageInput');if(i){i.inputMode='none';i.blur()}}
+  $('emojiBtn')?.classList.add('on');
+  // scroll messages to bottom so last messages stay visible above input
+  const msg=$('messages');
+  if(msg)requestAnimationFrame(()=>{msg.scrollTop=msg.scrollHeight});
+  if(typeof closeSheet==='function')try{closeSheet()}catch(e){}
+}
+function closeEmoji(){
+  epOpen=false;
+  chatPanel?.classList.remove('ep-open');
+  {const i=$('messageInput');if(i)i.inputMode=''}
+  $('emojiBtn')?.classList.remove('on');
+}
+window.closeEmoji=closeEmoji;window.openEmoji=openEmoji;
+
+$('epTabs').addEventListener('click',e=>{
+  const b=e.target.closest('.ep-tab');if(!b)return;
+  epCat=+b.dataset.i;renderEpTabs();renderEpGrid();$('epGrid').scrollTop=0;
+});
+$('epGrid').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-e]');if(!b)return;
+  // micro-interaction
+  b.classList.remove('pop');void b.offsetWidth;b.classList.add('pop');
+  setTimeout(()=>b.classList.remove('pop'),340);
+  const emo=b.dataset.e;
+  const inp=$('messageInput');if(!inp||inp.disabled)return;
+  const start=inp.selectionStart??inp.value.length,end=inp.selectionEnd??start;
+  const v=inp.value;
+  inp.value=v.slice(0,start)+emo+v.slice(end);
+  const pos=start+emo.length;
+  try{inp.setSelectionRange(pos,pos)}catch(_){}
+  inp.dispatchEvent(new Event('input',{bubbles:true}));
+  if(typeof updateComposer==='function')updateComposer();
+  if(navigator.vibrate)try{navigator.vibrate(8)}catch(_){}
+});
+
+epEl.addEventListener('mousedown',e=>e.preventDefault());
+epEl.addEventListener('click',e=>{const c=e.target.closest('.ep-ctl');if(!c)return;closeEmoji();if(c.id==='epKb')setTimeout(()=>$('messageInput')?.focus(),30)});
+$('messageInput')?.addEventListener('pointerdown',()=>{if(epOpen){closeEmoji();setTimeout(()=>$('messageInput').focus(),30)}});
+const eb=$('emojiBtn');
+if(eb){
+  const smileSvg=(typeof S==='function')
+    ?S('<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/>')
+    :'😊';
+  eb.innerHTML=smileSvg;
+  setTimeout(()=>{if(typeof IS!=='undefined'&&IS.smile)eb.innerHTML=IS.smile},600);
+  eb.onclick=e=>{e.preventDefault();e.stopPropagation();openEmoji()};
+}
+
+// close on outside / back / other UI
+document.addEventListener('click',e=>{
+  if(!epOpen)return;
+  if(!e.target.isConnected||e.composedPath().some(n=>n.id==='emojiPanel'||n.id==='emojiBtn'||n.id==='messageInput'))return;
+  closeEmoji();
+});
+$('backBtn')?.addEventListener('click',()=>closeEmoji());
+const _ms0=window.mediaSheet;
+if(typeof _ms0==='function')window.mediaSheet=function(){closeEmoji();return _ms0.apply(this,arguments)};
+
+/* ========== Telegram-style voice UI ========== */
+if(form){
+  const vrec=document.createElement('div');
+  vrec.className='vrec';
+  vrec.innerHTML=`<div class="vrec-bar" id="vrecBar"><i class="vrec-dot"></i><span class="vrec-time" id="vrecTime">0:00</span><div class="vrec-hint"><span class="chev">${document.documentElement.dir==='rtl'?'›':'‹'}</span><span id="vrecHint">${T('السحب للإلغاء','Slide to cancel')}</span></div></div>`;
+  form.insertBefore(vrec, form.firstChild);
+
+  const vlocked=document.createElement('div');
+  vlocked.className='vrec-locked';
+  vlocked.innerHTML=`<button type="button" class="vrec-trash-btn" id="vrecTrash" aria-label="cancel"></button><div class="vrec-bar"><i class="vrec-dot"></i><span class="vrec-time" id="vrecTime2">0:00</span><div class="vrec-hint" style="justify-content:flex-start;padding-inline-start:6px"><span>${T('جارٍ التسجيل...','Recording...')}</span></div></div><button type="button" class="vrec-send-btn" id="vrecSend" aria-label="send"></button>`;
+  form.insertBefore(vlocked, form.firstChild);
+
+  const lockZone=document.createElement('div');
+  lockZone.className='vrec-lock-zone';lockZone.id='vrecLock';
+  form.style.position='relative';
+  form.appendChild(lockZone);
+
+  setTimeout(()=>{
+    if(typeof IC==='undefined')return;
+    const trash=$('vrecTrash'),send=$('vrecSend'),lk=$('vrecLock');
+    if(trash)trash.innerHTML=IC.trash||'';
+    if(send)send.innerHTML=IC.send||'';
+    if(lk)lk.innerHTML=IC.lock||'';
+  },400);
+
+  $('vrecTrash')?.addEventListener('click',()=>{if(typeof cancelRecording==='function')cancelRecording()});
+  $('vrecSend')?.addEventListener('click',()=>{if(typeof stopRecording==='function')stopRecording(true)});
+
+  const mic=$('micBtn');if(mic)mic.classList.add('vrec-mic');
+
+  const _setRecUi=typeof setRecUi==='function'?setRecUi:null;
+  if(_setRecUi)window.setRecUi=function(on){
+    _setRecUi(on);
+    form.classList.toggle('recing',on);
+    form.classList.remove('locked');
+    const lz=$('vrecLock');
+    if(lz){lz.classList.remove('show','hot');lz.style.opacity=''}
+    if(on){
+      closeEmoji();
+      $('vrecTime').textContent='0:00';$('vrecTime2').textContent='0:00';
+      const bar=$('vrecBar');if(bar){bar.style.transform='';bar.style.opacity='';bar.classList.remove('pull')}
+      setTimeout(()=>{if(typeof rec!=='undefined'&&rec&&!rec.locked)$('vrecLock')?.classList.add('show')},200);
+    }
+  };
+
+  const _lockRec=typeof lockRec==='function'?lockRec:null;
+  if(_lockRec)window.lockRec=function(){
+    _lockRec();
+    form.classList.add('locked');
+    $('vrecLock')?.classList.remove('show','hot');
+    if(mic&&typeof IC!=='undefined'){mic.classList.add('lock');mic.innerHTML=IC.send}
+    const t=$('recTime')?.textContent||'0:00';
+    if($('vrecTime2'))$('vrecTime2').textContent=t;
+  };
+
+  setInterval(()=>{
+    if(typeof rec==='undefined'||!rec)return;
+    const t=$('recTime')?.textContent;if(!t)return;
+    if($('vrecTime'))$('vrecTime').textContent=t;
+    if($('vrecTime2'))$('vrecTime2').textContent=t;
+  },100);
+
+  let micStart=null;
+  mic?.addEventListener('pointerdown',e=>{
+    if(e.button>0||(typeof rec!=='undefined'&&rec))return;
+    micStart={x:e.clientX,y:e.clientY};
+  },{capture:true});
+
+  window.addEventListener('pointermove',e=>{
+    if(!micStart||typeof rec==='undefined'||!rec||rec.locked)return;
+    const sgn=document.documentElement.dir==='rtl'?1:-1;
+    const dx=(e.clientX-micStart.x)*sgn;
+    const dy=micStart.y-e.clientY;
+    const bar=$('vrecBar');
+    const pull=Math.max(0,Math.min(160,dx));
+    if(bar){
+      bar.style.transform=`translateX(${pull*sgn}px)`;
+      bar.style.opacity=String(Math.max(0.25,1-pull/140));
+      bar.classList.toggle('pull',pull>40);
+    }
+    const lz=$('vrecLock');
+    if(lz){
+      lz.classList.add('show');
+      const hot=dy>55;lz.classList.toggle('hot',hot);
+      lz.style.transform=hot?`translateY(${Math.min(0,-(dy-55)*0.3)}px)`:'';
+    }
+    if(dx>110){
+      micStart=null;
+      if(bar){bar.style.transform='';bar.style.opacity='';bar.classList.remove('pull')}
+      if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}
+      if(typeof cancelRecording==='function')cancelRecording();return;
+    }
+    if(dy>95){
+      micStart=null;
+      if(bar){bar.style.transform='';bar.style.opacity=''}
+      if(navigator.vibrate)try{navigator.vibrate(20)}catch(_){}
+      if(typeof lockRec==='function')lockRec();
+    }
+  },{capture:true});
+  window.addEventListener('pointerup',()=>{micStart=null},{capture:true});
+  window.addEventListener('pointercancel',()=>{micStart=null},{capture:true});
+
+  const _start=window.startRecording;
+  if(typeof _start==='function')window.startRecording=async function(){
+    closeEmoji();return _start.apply(this,arguments);
+  };
+}
+
+console.log('[Sahby v10] emoji docked + Twemoji + voice UI');
+})();
+</script>
+
+<style id="v11css">
+.ep-ctl{flex:0 0 auto;width:38px;height:34px;border-radius:10px;background:#101c24;display:grid;place-items:center;border:0;padding:0;position:sticky;inset-inline-end:0;font-size:18px}
+.ep-ctl img.emoji{width:20px;height:20px}
+.sring{display:inline-flex;padding:2.5px;border-radius:50%;background:conic-gradient(#34e0b3,#3b8bff,#a070ff,#34e0b3);flex-shrink:0}
+.sring.old{background:#3a4d57}.sring .avatar{border:2.5px solid var(--panel);box-sizing:content-box;width:43px;height:43px}
+.invite{display:flex;align-items:center;gap:10px;margin:10px 12px 4px;padding:12px 14px;width:calc(100% - 24px);border-radius:16px;background:linear-gradient(135deg,#1f4a45,#2b2f6e);color:#fff;text-align:start}
+.invite span{flex:1;font-weight:700}.invite em{font-style:normal;font-size:12px;opacity:.8}
+.invbox{background:#172b35;border-radius:14px;padding:12px;margin:8px 0;text-align:start;font-size:13px;line-height:1.8}
+.invbox b{display:block;word-break:break-all;direction:ltr;font-size:12px;color:#7fe5cb}
+.invpts{display:flex;justify-content:space-around;margin:8px 0;text-align:center}.invpts b{display:block;font-size:22px}
+.rpl-h{position:fixed;overflow:hidden;pointer-events:none;z-index:9999}
+.rpl-h i{position:absolute;border-radius:50%;background:rgba(255,255,255,.28);animation:rpl .55s ease-out forwards}
+@keyframes rpl{from{transform:scale(.1);opacity:.9}to{transform:scale(1);opacity:0}}
+.btn,.ritem,.act,.navbtn,.sheetbtn,.ibtn,.sitem,.invite,.ep-tab,.ep-ctl,.opt,.tool,.sring{transition:transform .12s ease}
+.btn:active,.ritem:active,.act:active,.navbtn:active,.sheetbtn:active,.ibtn:active,.sitem:active,.invite:active,.ep-tab:active,.ep-ctl:active,.opt:active,.tool:active,.sring:active{transform:scale(.95)}
+@media(prefers-reduced-motion:reduce){.rpl-h{display:none}}
+</style>
+<script id="v11">
+(function(){
+const $=id=>document.getElementById(id),A=()=>typeof lang!=='undefined'&&lang==='ar',T=(a,e)=>A()?a:e;
+/* ---- Ripple ---- */
+const SEL='button,.item,.sitem,.ritem,.act,.navbtn,.sheetbtn,.ibtn,.btn,.sring,.invite,.opt';
+document.addEventListener('pointerdown',e=>{
+ const t=e.target.closest&&e.target.closest(SEL);if(!t||t.disabled)return;
+ const r=t.getBoundingClientRect();if(r.width>700||r.height>500||!r.width)return;
+ const h=document.createElement('span');h.className='rpl-h';
+ h.style.cssText=`left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;border-radius:${getComputedStyle(t).borderRadius}`;
+ const d=Math.max(r.width,r.height)*2.2,i=document.createElement('i');
+ i.style.cssText=`width:${d}px;height:${d}px;left:${e.clientX-r.left-d/2}px;top:${e.clientY-r.top-d/2}px`;
+ h.appendChild(i);document.body.appendChild(h);setTimeout(()=>h.remove(),600);
+},{passive:true,capture:true});
+/* ---- Referral ---- */
+const UU=/^[0-9a-f-]{36}$/i;
+try{const q=new URLSearchParams(location.search).get('ref');if(q&&UU.test(q))localStorage.setItem('sahby_ref',q)}catch(e){}
+const link=()=>location.href.split(/[?#]/)[0]+'?ref='+me.id;
+const msg=()=>T('انضم لي على صحبي 💬 دردشة سريعة وآمنة مع أصحابك','Join me on Sahby 💬 fast & secure chat with friends');
+async function claim(){
+ let r;try{r=localStorage.getItem('sahby_ref')}catch(e){}
+ if(!r||!me||r===me.id)return;
+ try{const x=await db.rpc('claim_referral',{ref_id:r});if(!x.error||/duplicate|already/i.test(x.error.message))localStorage.removeItem('sahby_ref')}catch(e){}
+}
+const _ep=ensureProfile;ensureProfile=async function(){const r=await _ep.apply(this,arguments);claim();return r};
+async function count(){
+ try{const r=await db.from('referrals').select('id',{count:'exact',head:true}).eq('referrer_id',me.id);
+  const p=await db.from('profiles').select('verified').eq('id',me.id).maybeSingle();
+  if(p.data&&myProfile)myProfile.verified=p.data.verified;return r.count||0}catch(e){return 0}
+}
+window.openInvite=async function(){
+ if(!me)return;
+ const I=typeof IC!=='undefined'?IC:{};
+ openModal(`<h2>${T('دعوة صديق','Invite friends')}</h2><div class="invpts"><div><b id="invN">…</b><small>${T('أصدقاء انضموا','Joined')}</small></div><div><b id="invP">…</b><small>${T('نقاط','Points')}</small></div></div>
+ <div class="invbox">${T('🔵 أول صديق ينضم عبر رابطك = شارة حساب موثق. كل صديق = 10 نقاط.','🔵 First friend joining via your link = verified badge. Each friend = 10 points.')}<b>${esc(link())}</b></div>
+ <div class="sheet"><button class="sheetbtn" onclick="invShare('wa')"><span>WhatsApp</span></button><button class="sheetbtn" onclick="invShare('tg')"><span>Telegram</span></button><button class="sheetbtn" onclick="invShare('fb')"><span>Facebook</span></button><button class="sheetbtn" onclick="invShare('any')"><span>${T('مشاركة...','Share...')}</span></button><button class="sheetbtn" onclick="invShare('copy')">${I.copy||''}<span>${T('نسخ الرابط','Copy link')}</span></button></div>`);
+ const n=await count();if($('invN')){$('invN').textContent=n;$('invP').textContent=n*10}
+ if(n>=1&&myProfile)myProfile.verified=true;
+};
+window.invShare=async function(k){
+ const l=link(),m=msg(),e=encodeURIComponent,w=u=>window.open(u,'_blank','noopener');
+ if(k==='wa')w('https://wa.me/?text='+e(m+' '+l));
+ else if(k==='tg')w('https://t.me/share/url?url='+e(l)+'&text='+e(m));
+ else if(k==='fb')w('https://www.facebook.com/sharer/sharer.php?u='+e(l));
+ else if(k==='any'&&navigator.share)try{await navigator.share({title:'صحبي',text:m,url:l})}catch(x){}
+ else{try{await navigator.clipboard.writeText(m+' '+l);toast(T('تم نسخ الرابط','Link copied'))}catch(x){toast(l)}}
+};
+/* ---- Invite buttons: home + settings (+ badge on my profile) ---- */
+const _rl3=renderList;renderList=function(){
+ _rl3.apply(this,arguments);
+ try{const v=sub||view,L=$('list');if(!L||sub==='edit'||!me||L.querySelector('#invBtn'))return;
+  const I=typeof IC!=='undefined'?IC:{};
+  if(v==='chats'&&!$('searchInput').value.trim()){const st=L.querySelector('.stories');
+   const h=`<button class="invite" id="invBtn" onclick="openInvite()">${I.users||''}<span>${T('دعوة صديق','Invite a friend')}</span><em>${T('احصل على شارة 🔵','Get a 🔵 badge')}</em></button>`;
+   st?st.insertAdjacentHTML('afterend',h):L.insertAdjacentHTML('afterbegin',h)}
+  
+  else if(v==='profile'){const h=L.querySelector('.pf h2');if(h&&myProfile&&myProfile.verified&&!h.querySelector('.vb'))h.insertAdjacentHTML('beforeend',vbadge(myProfile))}
+ }catch(e){}
+};
+})();
+</script>
+<style id="v12css">
+#auth{position:fixed;inset:0;z-index:210;display:grid;place-items:center;padding:18px;background:#06100e;overflow:auto;transition:opacity .4s,transform .4s}
+#auth.out{opacity:0;transform:scale(1.04);pointer-events:none}
+#auth::before,#auth::after{content:"";position:fixed;width:60vmax;height:60vmax;border-radius:50%;filter:blur(80px);opacity:.55;z-index:0}
+#auth::before{background:#0e8f78;left:-20%;top:-25%}#auth::after{background:#5b3fd1;right:-20%;bottom:-25%}
+.a-card{position:relative;z-index:1;width:min(400px,100%);display:grid;background:#ffffff0d;border:1px solid #ffffff22;border-radius:26px;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);box-shadow:0 20px 60px #0008;overflow:hidden}
+.ap{grid-area:1/1;padding:26px 22px;opacity:0;pointer-events:none;transform:translateX(30px);transition:opacity .35s,transform .35s;text-align:start}
+.ap.on{opacity:1;pointer-events:auto;transform:none}.ap.left{transform:translateX(-30px)}
+.ap h2{margin:0 0 4px;font-size:24px}.ap p{margin:0 0 18px;color:var(--muted);font-size:13.5px}
+.a-in{position:relative;margin-bottom:12px}.a-in input{width:100%;background:#ffffff10;border:1px solid #ffffff22;border-radius:14px;color:var(--text);padding:14px;outline:none;font-size:15px;direction:ltr;text-align:start}
+.a-in input:focus{border-color:#34e0b3}.a-in .eye{position:absolute;top:50%;inset-inline-end:8px;transform:translateY(-50%);background:transparent;font-size:18px;padding:6px}
+.a-btn{width:100%;padding:14px;border-radius:14px;font-weight:800;font-size:15.5px;color:#fff;background:linear-gradient(135deg,#1da884,#3b8bff);margin-top:4px}.a-btn:disabled{opacity:.45}
+.a-sw{text-align:center;margin-top:16px;font-size:13.5px;color:var(--muted)}.a-sw a{color:#7fe5cb;font-weight:700;cursor:pointer}
+.a-err{min-height:18px;margin-top:10px;color:#ff8a8a;font-size:13px;line-height:1.6}
+.a-h{font-size:12.5px;min-height:18px;margin:-6px 0 8px;color:var(--muted)}.a-h.ok{color:#5be3b5}.a-h.bad{color:#ff8a8a}
+.pwm{display:flex;gap:4px;margin:-4px 0 4px}.pwm i{flex:1;height:5px;border-radius:3px;background:#ffffff22;transition:background .25s}
+.pwm.s1 i:nth-child(-n+1){background:#ff5c5c}.pwm.s2 i:nth-child(-n+2){background:#ffb340}.pwm.s3 i:nth-child(-n+3){background:#9ad13b}.pwm.s4 i{background:#34e0b3}
+.a-sv{display:flex;gap:10px;overflow-x:auto;padding:2px 0 14px;margin-bottom:4px}
+.a-sv .sc{flex:0 0 92px;position:relative;text-align:center;background:#ffffff10;border:1px solid #ffffff1c;border-radius:16px;padding:12px 6px 8px;cursor:pointer}
+.a-sv .sc .avatar{width:48px;height:48px;margin:0 auto 6px}.a-sv .sc b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.a-sv .sc small{font-size:11px;color:var(--muted);direction:ltr;display:block;overflow:hidden;text-overflow:ellipsis}
+.a-sv .sc .x{position:absolute;top:2px;inset-inline-end:4px;background:transparent;color:var(--muted);font-size:14px;padding:2px 5px}
+.a-lbl{font-size:12px;color:var(--muted);margin:0 2px 8px}
+.outb{color:#ff9aa4!important}
+</style>
+<script id="v12">
+(function(){
+const $=id=>document.getElementById(id),T=(a,e)=>(typeof lang!=='undefined'&&lang==='ar')?a:e,K='sahby_accts';
+const mail=u=>u+'@sahby.app',ld=()=>{try{return JSON.parse(localStorage.getItem(K)||'[]')}catch(e){return[]}},sv=a=>{try{localStorage.setItem(K,JSON.stringify(a.slice(0,8)))}catch(e){}};
+const saveAcct=(u,n,a)=>{if(!u)return;const l=ld().filter(x=>x.u!==u);l.unshift({u,n:n||u,a:a||''});sv(l)};
+const pw=p=>{const c=[/[a-z]/,/[A-Z]/,/\d/,/[^A-Za-z0-9]/].map(r=>r.test(p));const ok=c.every(Boolean)&&p.length>=8;
+ let sc=c.filter(Boolean).length+(p.length>=12?1:0);if(p.length<8)sc=Math.min(sc,2);if(!p)sc=0;return{ok,sc:Math.min(4,sc),c}};
+const uErr=u=>{if(u.length<4)return T('4 خانات على الأقل','At least 4 characters');if(u.length>20)return T('20 خانة كحد أقصى','Max 20 characters');
+ if(!/^[a-z0-9_]+$/.test(u))return T('حروف إنجليزية وأرقام فقط، بدون مسافات','English letters & digits only, no spaces');
+ try{if(typeof unameError==='function'){const e=unameError(u);if(e)return e}}catch(e){}return ''};
+const av=a=>a&&typeof safeUrl==='function'&&safeUrl(a)?`<img alt="" src="${safeUrl(a)}">`:'';
+const el=document.createElement('div');el.id='auth';el.style.display='none';
+const pwIn=(id,ph,ac)=>`<div class="a-in"><input id="${id}" type="password" placeholder="${ph}" autocomplete="${ac}"><button type="button" class="eye" data-eye="${id}" aria-label="show">👁️</button></div>`;
+el.innerHTML=`<div class="a-card">
+<div class="ap on" id="apL"><h2>${T('أهلاً بيك 👋','Welcome back 👋')}</h2><p>${T('سجّل دخولك عشان تكمل دردشتك','Log in to continue chatting')}</p>
+<div id="aSv"></div>
+<div class="a-in"><input id="lU" placeholder="${T('اسم المستخدم','Username')}" autocapitalize="none" autocomplete="username"></div>${pwIn('lP',T('كلمة السر','Password'),'current-password')}
+<button class="a-btn" id="lBtn">${T('تسجيل الدخول','Log in')}</button><div class="a-err" id="lErr"></div><div class="a-sw" style="margin:0 0 6px"><a data-go="F">${T('نسيت كلمة السر؟','Forgot password?')}</a></div>
+<div class="a-sw">${T('معندكش حساب؟','No account?')} <a data-go="S">${T('إنشاء حساب','Sign up')}</a></div></div>
+<div class="ap left" id="apS"><h2>${T('إنشاء حساب','Create account')}</h2><p>${T('اختار اسم مستخدم فريد وكلمة سر قوية','Pick a unique username and a strong password')}</p>
+<div class="a-in"><input id="sU" placeholder="${T('اسم المستخدم','Username')}" autocapitalize="none" autocomplete="username" maxlength="20"></div><div class="a-h" id="sUh"></div>
+${pwIn('sP',T('كلمة السر','Password'),'new-password')}<div class="pwm" id="pwm"><i></i><i></i><i></i><i></i></div><div class="a-h" id="pwh"></div>
+<button class="a-btn" id="sBtn" disabled>${T('إنشاء الحساب','Sign up')}</button><div class="a-err" id="sErr"></div>
+<div class="a-sw">${T('عندك حساب؟','Have an account?')} <a data-go="L">${T('تسجيل الدخول','Log in')}</a></div></div><div class="ap left" id="apF"><h2>${T('استرجاع الحساب','Recover account')}</h2><p>${T('اكتب كود الاسترجاع اللي حفظته عند إنشاء الحساب','Enter the recovery code you saved when you created your account')}</p>
+<div class="a-in"><input id="fC" placeholder="XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off"></div>
+<button class="a-btn" id="fBtn">${T('تحقق من الكود','Verify code')}</button><div class="a-err" id="fErr"></div>
+<div class="a-sw"><a data-go="L">${T('رجوع لتسجيل الدخول','Back to login')}</a></div></div>
+<div class="ap left" id="apR"><h2>${T('كلمة سر جديدة','New password')}</h2><p style="color:#ffd58a">${T('الكود صح. اختار كلمة سر جديدة، وتأكد إنك تحفظها كويس المرة دي، لأنك ممكن تنسى الكود كمان.','Code accepted. Choose a new password and make sure you save it this time, since you may forget the code too.')}</p>${pwIn('rP',T('كلمة سر جديدة','New password'),'new-password')}<div class="pwm" id="rM"><i></i><i></i><i></i><i></i></div><div class="a-h" id="rH"></div>
+<button class="a-btn" id="rBtn" disabled>${T('حفظ ودخول','Save & enter')}</button><div class="a-err" id="rErr"></div></div></div>`;
+document.body.appendChild(el);
+function go(k){['L','S','F','R'].forEach(x=>$('ap'+x).className='ap '+(x===k?'on':'left'));['lErr','sErr','fErr','rErr'].forEach(i=>$(i).textContent='')}
+function cards(){const l=ld();$('aSv').innerHTML=l.length?`<div class="a-lbl">${T('حسابات على هذا الجهاز','Accounts on this device')}</div><div class="a-sv">${l.map(x=>`<div class="sc" data-u="${esc(x.u)}"><button class="x" data-rm="${esc(x.u)}" aria-label="remove">✕</button><div class="avatar">${av(x.a)||esc((x.n||x.u).trim().charAt(0).toUpperCase())}</div><b>${esc(x.n)}</b><small>@${esc(x.u)}</small></div>`).join('')}</div>`:''}
+el.addEventListener('click',e=>{
+ const g=e.target.closest('[data-go]');if(g)return go(g.dataset.go);
+ const ey=e.target.closest('[data-eye]');if(ey){const i=$(ey.dataset.eye);i.type=i.type==='password'?'text':'password';return}
+ const rm=e.target.closest('[data-rm]');if(rm){e.stopPropagation();sv(ld().filter(x=>x.u!==rm.dataset.rm));return cards()}
+ const c=e.target.closest('.sc');if(c){$('lU').value=c.dataset.u;$('lP').focus()}});
+let tm=0,okU=false;
+function chk(){const u=$('sU').value=$('sU').value.toLowerCase().replace(/\s/g,''),h=$('sUh');okU=false;clearTimeout(tm);
+ if(!u){h.textContent='';h.className='a-h';return upd()}
+ const er=uErr(u);if(er){h.textContent=er;h.className='a-h bad';return upd()}
+ h.textContent=T('جاري التحقق...','Checking...');h.className='a-h';
+ tm=setTimeout(async()=>{try{const r=await db.rpc('username_available',{u});
+  if(r.error)throw r.error;if(r.data===false){h.textContent=T('اسم المستخدم مستخدم قبل كده','Username already taken');h.className='a-h bad'}else{okU=true;h.textContent=T('متاح ✓','Available ✓');h.className='a-h ok'}}
+  catch(x){okU=true;h.textContent=T('تمام (هيتأكد وقت الإنشاء)','OK (verified on sign-up)');h.className='a-h ok'}upd()},400);upd()}
+const NM=[T('حرف صغير','lowercase'),T('حرف كبير','uppercase'),T('رقم','digit'),T('رمز','symbol')];
+function pwUp(){const p=$('sP').value,r=pw(p);$('pwm').className='pwm s'+r.sc;
+ const miss=NM.filter((_,i)=>!r.c[i]);if(p.length<8)miss.push(T('8 خانات','8+ chars'));
+ $('pwh').textContent=!p?'':miss.length?T('ينقص: ','Missing: ')+miss.join('، '):T('كلمة سر قوية ✓','Strong password ✓');$('pwh').className='a-h '+(p&&!miss.length?'ok':'');upd()}
+function upd(){$('sBtn').disabled=!(okU&&pw($('sP').value).ok)}
+$('sU').addEventListener('input',chk);$('sP').addEventListener('input',pwUp);
+const busy=(b,on,t)=>{b.disabled=on;if(t)b.textContent=t};
+let done;
+const newTok=()=>crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now();
+async function enter(user){const tok=newTok();let r;try{r=await db.rpc('register_session',{tok})}catch(e){}
+ if(r&&r.data==='locked'){try{await db.auth.signOut({scope:'local'})}catch(e){}throw Error(T('تم قفل الحساب لمدة ساعة بسبب كثرة تسجيلات الدخول المتبادلة بين الأجهزة.','This account is locked for 1 hour due to too many logins between devices.'))}
+ try{localStorage.setItem('sahby_sid',tok)}catch(e){}finish(user)}
+const signIn=async(u,p)=>{let em=mail(u);try{const x=await db.rpc('login_email',{u});if(x&&x.data)em=x.data}catch(e){}return db.auth.signInWithPassword({email:em,password:p})};
+const genCode=()=>{const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',b=crypto.getRandomValues(new Uint8Array(16));let c='';b.forEach((v,i)=>{c+=A[v%A.length];if(i%4===3&&i<15)c+='-'});return c};
+window.showCode=code=>{openModal(`<h2>🔑 ${T('كود الاسترجاع','Recovery code')}</h2><p style="color:var(--muted);font-size:13px;line-height:1.8;text-align:start">${T('احفظ الكود ده في مكان آمن (لقطة شاشة أو ورقة). هتحتاجه لو نسيت كلمة السر، وبيظهر مرة واحدة بس.','Save this code somewhere safe. You will need it if you forget your password. It is shown only once.')}</p><div class="invbox"><b style="font-size:19px;text-align:center;letter-spacing:1px">${code}</b></div><button class="btn big" id="rcCp">${T('نسخ الكود','Copy code')}</button><button class="btn secondary big" style="margin-top:8px" onclick="closeModal()">${T('حفظته','I saved it')}</button>`);
+ $('rcCp').onclick=async()=>{try{await navigator.clipboard.writeText(code);toast(T('تم النسخ','Copied'))}catch(e){toast(code)}}};
+window.regenCode=async()=>{const c=genCode();try{const r=await db.rpc('set_recovery_code',{code:c});if(r.error)throw r.error;showCode(c)}catch(e){toast(T('شغّل recovery.sql في Supabase الأول','Run recovery.sql in Supabase first'))}};
+
+function finish(u){el.classList.add('out');setTimeout(()=>{el.style.display='none'},450);done&&done(u)}
+$('lBtn').onclick=async()=>{const u=$('lU').value.trim().toLowerCase(),p=$('lP').value,b=$('lBtn'),er=$('lErr');er.textContent='';
+ if(!u||!p)return er.textContent=T('اكتب اسم المستخدم وكلمة السر','Enter username and password');
+ busy(b,true,T('جاري الدخول...','Logging in...'));
+ try{const r=await signIn(u,p);if(r.error)throw r.error;saveAcct(u);await enter(r.data.user)}
+ catch(x){er.textContent=/invalid|credentials/i.test(x.message)?T('اسم المستخدم أو كلمة السر غلط','Wrong username or password'):x.message;busy(b,false,T('تسجيل الدخول','Log in'))}};
+$('sBtn').onclick=async()=>{const u=$('sU').value,p=$('sP').value,b=$('sBtn'),er=$('sErr');er.textContent='';busy(b,true,T('جاري الإنشاء...','Creating...'));
+ try{window.__pendUname=u;const r=await db.auth.signUp({email:mail(u),password:p});if(r.error)throw r.error;
+  if(!r.data.session)throw Error(T('عطّل Confirm email من إعدادات Supabase ثم أعد المحاولة','Disable "Confirm email" in Supabase, then retry'));
+  saveAcct(u);let c=genCode();try{const q=await db.rpc('set_recovery_code',{code:c});if(q.error)c=''}catch(e){c=''}await enter(r.data.user);if(c)setTimeout(()=>showCode(c),1500)}
+ catch(x){er.textContent=/registered|exists/i.test(x.message)?T('اسم المستخدم مستخدم قبل كده','Username already taken'):x.message;busy(b,false,T('إنشاء الحساب','Sign up'))}};
+let fcode='';
+$('fBtn').onclick=async()=>{const c=$('fC').value.trim(),er=$('fErr'),b=$('fBtn');er.textContent='';if(!c)return er.textContent=T('اكتب الكود','Enter the code');
+ b.disabled=true;try{const r=await db.rpc('check_recovery_code',{code:c});if(r.error)throw r.error;
+  if(r.data==='locked')throw Error(T('محاولات كتير. جرّب بعد دقيقة','Too many attempts. Try again in a minute'));
+  if(r.data!=='ok')throw Error(T('الكود غلط','Wrong code'));fcode=c;go('R')}catch(x){er.textContent=x.message}b.disabled=false};
+$('rP').addEventListener('input',()=>{const r=pw($('rP').value);$('rM').className='pwm s'+r.sc;$('rBtn').disabled=!r.ok;$('rH').textContent=r.ok?T('كلمة سر قوية ✓','Strong password ✓'):T('لازم حروف كبيرة وصغيرة وأرقام ورموز (8+)','Upper, lower, digits & symbols (8+)');$('rH').className='a-h '+(r.ok?'ok':'')});
+$('rBtn').onclick=async()=>{const p=$('rP').value,er=$('rErr'),b=$('rBtn');er.textContent='';b.disabled=true;
+ try{const r=await db.rpc('reset_password_with_code',{code:fcode,newpass:p});if(r.error)throw r.error;
+  if(typeof r.data!=='string'||r.data.slice(0,3)!=='ok:')throw Error(T('الكود انتهى. ابدأ من الأول.','Code expired. Start again.'));
+  const u=r.data.slice(3),x=await signIn(u,p);if(x.error)throw x.error;saveAcct(u);await enter(x.data.user);
+  const c=genCode();try{const q=await db.rpc('set_recovery_code',{code:c});if(!q.error)setTimeout(()=>showCode(c),1500)}catch(e){}}
+ catch(x){er.textContent=x.message;b.disabled=false}};
+['lU','lP'].forEach(i=>$(i).addEventListener('keydown',e=>{if(e.key==='Enter')$('lBtn').click()}));
+window.authGate=async()=>{try{hideSplash()}catch(e){}
+ if(!introDone){showOnb(false);await new Promise(r=>{const iv=setInterval(()=>{if(introDone){clearInterval(iv);setTimeout(r,500)}},150)})}
+ return new Promise(res=>{done=res;cards();el.classList.remove('out');el.style.display='grid';if(!ld().length)go('S')})};
+/* ---- Logout / secure account (settings) ---- */
+window.doLogout=function(){
+ const p=myProfile||{};
+ confirmDialog({tone:'danger',icon:(typeof IC!=='undefined'&&IC.info)||'',title:T('تسجيل الخروج؟','Log out?'),
+  text:T('تنبيه مهم: يرجى التأكد من أنك تحفظ اسم المستخدم وكلمة السر الخاصة بك جيداً للتمكن من العودة لهذا الحساب لاحقاً.','Important: make sure you have saved your username and password so you can come back to this account later.'),
+  confirmText:T('تأكيد الخروج','Confirm logout'),
+  onConfirm:async()=>{saveAcct(p.username,p.display_name,p.avatar_url);
+   try{await Promise.race([db.rpc('clear_session'),new Promise(r=>setTimeout(r,2000))])}catch(e){}
+   try{await Promise.race([db.auth.signOut({scope:'local'}),new Promise(r=>setTimeout(r,3000))])}catch(e){}
+   try{Object.keys(localStorage).filter(k=>/^sb-.*-auth-token/.test(k)||k==='sahby_last_me'||k==='sahby_sid'||k.startsWith('sahby_cache_')).forEach(k=>localStorage.removeItem(k))}catch(e){}
+   location.replace(location.href.split('#')[0])}});
+};
+window.secureAccount=function(){
+ const p=myProfile||{};
+ openModal(`<h2>${me.is_anonymous?T('تأمين حسابك','Secure your account'):T('تغيير كلمة السر','Change password')}</h2><p style="color:var(--muted);font-size:13px;text-align:start">${me.is_anonymous?T('حسابك الحالي من غير كلمة سر. اختار كلمة سر قوية عشان تقدر تدخل بيه من أي جهاز: @','Your account has no password yet. Set a strong one to sign in from any device: @')+esc(p.username||''):T('اختار كلمة سر قوية جديدة لحسابك','Choose a new strong password for your account')}</p>
+ <div class="a-in" style="margin-top:12px"><input id="mP" type="password" class="field" placeholder="${T('كلمة السر','Password')}" style="direction:ltr"><button type="button" class="eye" data-eye="mP">👁️</button></div><div class="pwm" id="mM"><i></i><i></i><i></i><i></i></div><div class="a-h" id="mE"></div>
+ <button class="btn big" id="mB" disabled>${T('حفظ','Save')}</button>`);
+ $('mP').oninput=()=>{const r=pw($('mP').value);$('mM').className='pwm s'+r.sc;$('mB').disabled=!r.ok;$('mE').textContent=r.ok?'':T('لازم حروف كبيرة وصغيرة وأرقام ورموز (8+)','Upper, lower, digits & symbols (8+)')};
+ document.querySelector('[data-eye=mP]').onclick=()=>{const i=$('mP');i.type=i.type==='password'?'text':'password'};
+ $('mB').onclick=async()=>{$('mB').disabled=true;try{const r=await db.auth.updateUser(me.is_anonymous?{email:mail(p.username),password:$('mP').value}:{password:$('mP').value});if(r.error)throw r.error;
+  saveAcct(p.username,p.display_name,p.avatar_url);if(me)me.is_anonymous=false;closeModal();toast(T('تم تأمين الحساب ✓','Account secured ✓'));renderList()}catch(x){$('mE').textContent=x.message;$('mB').disabled=false}}
+};
+const _rl4=renderList;renderList=function(){_rl4.apply(this,arguments);
+ try{if((sub||view)!=='settings'||sub==='edit')return;const L=$('list');if(!L||!me||L.querySelector('#acctCard'))return;
+  const an=me.is_anonymous,I=typeof IC!=='undefined'?IC:{},row=(f,t,ic,c)=>`<button class="ritem ${c||''}" onclick="${f}">${ic||''}<span>${t}</span></button>`;
+  const h=`<div id="acctCard"><div class="sect">${T('الحساب','Account')}</div><div class="card">`+row('openInvite()',T('دعوة صديق','Invite a friend'),I.users)
+   +(an?row('secureAccount()',T('تأمين الحساب بكلمة سر','Secure account with password'),I.lock)
+   :row('secureAccount()',T('تغيير كلمة السر','Change password'),I.lock)+row('regenCode()',T('كود الاسترجاع (إنشاء كود جديد)','Recovery code (generate new)'),I.shield)+row('doLogout()',T('تسجيل الخروج','Log out'),'','outb'))+`</div></div>`;
+  const v6=L.querySelector('#v6set');v6?v6.insertAdjacentHTML('afterend',h):L.querySelector('.pf')?.insertAdjacentHTML('afterbegin',h)}catch(e){}};
+/* ---- جلسة واحدة: لو سجّل حد دخول من جهاز تاني ---- */
+let kicked=false;
+function kick(v){if(kicked)return;kicked=true;
+ try{Object.keys(localStorage).filter(k=>/^sb-.*-auth-token/.test(k)||k==='sahby_last_me'||k==='sahby_sid'||k.startsWith('sahby_cache_')).forEach(k=>localStorage.removeItem(k))}catch(e){}
+ try{db.auth.signOut({scope:'local'})}catch(e){}
+ const d=document.createElement('div');d.id='kick';d.style.cssText='position:fixed;inset:0;z-index:500;background:#000c;display:grid;place-items:center;padding:20px';
+ d.innerHTML=`<div class="a-card" style="padding:26px 22px;text-align:center;background:#14232c;max-width:360px"><h2 style="margin:0 0 10px">${v==='locked'?T('تم قفل الحساب','Account locked'):T('تم تسجيل خروجك','You were logged out')}</h2><p style="color:var(--muted);line-height:1.8;margin:0 0 18px">${v==='locked'?T('تم قفل الحساب لمدة ساعة بسبب كثرة تسجيلات الدخول المتبادلة بين الأجهزة.','The account is locked for 1 hour because of too many logins between devices.'):T('تم تسجيل الدخول إلى حسابك من جهاز آخر، لذلك تم تسجيل خروجك من هذا الجهاز.','Your account was logged in on another device, so you were logged out here.')}</p><button class="a-btn" onclick="location.replace(location.href.split('#')[0])">${T('حسناً','OK')}</button></div>`;
+ document.body.appendChild(d)}
+async function watch(){try{if(kicked||typeof db==='undefined'||!db||!me||me.is_anonymous||offlineMode)return;
+ const tok=localStorage.getItem('sahby_sid');
+ if(!tok){const t=newTok(),r=await db.rpc('register_session',{tok:t});if(r.data==='ok')localStorage.setItem('sahby_sid',t);else if(r.data==='locked')kick('locked');return}
+ const r=await db.rpc('check_session',{tok});if(r.error)return;
+ if(r.data==='none')await db.rpc('register_session',{tok});else if(r.data==='kicked'||r.data==='locked')kick(r.data)}catch(e){}}
+setInterval(watch,15000);setTimeout(watch,6000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)watch()});
+})();
+</script>
 </body></html>
- 
